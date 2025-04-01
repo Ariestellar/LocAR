@@ -1,115 +1,124 @@
-<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8">
-		<title>360 сцене</title>
-		<style>
-      body { margin: 0; overflow: hidden; }
-      #backButton {
-          position: absolute;
-          top: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: 10px 20px;
-          font-size: 18px;
-          background: #007BFF;
-          color: white;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          z-index: 10;
-      }
-      #fade {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: black;
-            opacity: 1;
-            pointer-events: none;
-            transition: opacity 1s ease-in-out;
-            z-index: 100;
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DeviceOrientationControls } from './libs/DeviceOrientationControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+document.addEventListener('click', onClick);
+const triggersForObject = [];
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(); 
+let mixer;
+const animationClips = [];
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setAnimationLoop(animate);
+document.body.appendChild(renderer.domElement);
+
+// Используем видео с веб-камеры как текстуру для фона сцены
+navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.play();
+
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.minFilter = THREE.LinearFilter;
+    videoTexture.magFilter = THREE.LinearFilter;
+    videoTexture.format = THREE.RGBFormat;
+
+    scene.background = videoTexture;
+});
+
+const loader = new GLTFLoader();
+loader.load(
+    './scene.glb',
+    function (gltf) {
+        scene.add(gltf.scene);
+        gltf.scene.traverse(function (child) {
+            if (child instanceof THREE.Mesh) {
+                if (child.name == "Mars" || child.name == "Moon") {
+                    triggersForObject.push(child);
+                    console.log('Trigger addings:' + child.name);
+                }
+            }
+        });
+
+        if (gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(gltf.scene);
+            animationClips.push(...gltf.animations);
+            mixer.clipAction(animationClips[0]).play();
+            mixer.clipAction(animationClips[1]).play();
+            mixer.clipAction(animationClips[2]).play();
+        }
+    },    
+    function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+    },    
+    function (error) {
+        console.log('An error happened:' + error);
+    } 
+);
+
+const light = new THREE.AmbientLight(0xffffff, 5);
+scene.add(light);
+let controls;
+
+function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+if (isMobileDevice()) {
+    initializeGyroControls();
+} else {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.maxPolarAngle = Math.PI;
+    controls.minDistance = 1.0;
+    controls.maxDistance = 1.0;
+    controls.enableZoom = false;
+    controls.target.set(0, 10, 0);
+    controls.update();
+}
+
+function initializeGyroControls() {
+    camera.position.set(0, 10, 0);
+    controls = new DeviceOrientationControls(camera);
+    window.addEventListener("deviceorientation", handleOrientation);
+}
+
+const clock = new THREE.Clock();
+function animate() {
+    if (controls) { controls.update(); }
+    if (mixer) { mixer.update(clock.getDelta()); }
+    renderer.render(scene, camera);
+}
+
+function handleOrientation(event) {
+    if (controls) {
+        controls.update(event.alpha, event.beta, event.gamma);
+    }
+}
+
+function onClick(event) {
+    if (triggersForObject.length === 0) return;
+
+    event.preventDefault();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(triggersForObject);
+
+    if (intersects.length > 0) { 
+        const object = intersects[0].object;
+        console.log('TriggerPress: ' + object.name);
+        if (object.name == "Mars") { 
+            setTimeout(() => {window.location.href = 'https://ariestellar.github.io/ARSpaceDay360Mars.github.io';}, 1000);
         }
 
-        @keyframes starWarsCrawl {
-            0% { transform: perspective(300px) rotateX(20deg) translateY(70vh) scale(1.5); opacity: 1; }
-            100% { transform: perspective(300px) rotateX(25deg) translateY(-100vh) scale(1); opacity: 0; }
+        if (object.name == "Moon") { 
+            setTimeout(() => {window.location.href = 'https://ariestellar.github.io/ARSpaceDay360Moon.github.io';}, 1000);
         }
-
-        #starWarsText {
-            position: absolute;
-            width: 100%;
-            bottom: 0;
-            font-size: 24px;
-            color: rgb(255, 255, 255);
-            text-align: center;
-            opacity: 0;
-            transform-origin: 50% 100%;
-            transform: perspective(300px) rotateX(45deg) translateY(100vh) scale(1.5);
-            transition: opacity 1s, transform 5s linear;
-        }
-        .animate-text {
-            animation: starWarsCrawl 45s linear forwards;
-        }
-		</style>
-		<script type="module" crossorigin src="./assets/index-DDKFg6kM.js"></script>
-	</head>
-	<body>
-    <div id="fade"></div>
-    <button id="backButton">Вернуться в AR</button>
-    <div id="starWarsText">
-      Ах, этот день двенадцатый апреля,<br>
-      Как он пронёсся по людским сердцам.<br>
-      Казалось, мир невольно стал добрее,<br>
-      Своей победой потрясенный сам.<br><br>
-      
-      Какой гремел он музыкой вселенской,<br>
-      Тот праздник, в пестром пламени знамён,<br>
-      Когда безвестный сын земли смоленской<br>
-      Землёй-планетой был усыновлён.<br><br>
-      
-      Жилец Земли, геройский этот малый<br>
-      В космической посудине своей<br>
-      По круговой, вовеки небывалой,<br>
-      В пучинах неба вымахнул над ней...
-  </div>
-     <!-- Добавление аудио -->
-     <audio id="spaceAudio" loop autoplay>
-      <source src="./assets/space-sound-CPmgvluV.mp3" type="audio/mp3">
-      Ваш браузер не поддерживает элемент audio.
-    </audio>
-
-    <!-- Вторая аудиодорожка -->
-    <audio id="poemAudio">
-      <source src="./assets/poem-DEUWvjAx.mp3" type="audio/mp3">
-      Ваш браузер не поддерживает элемент audio.
-    </audio>
-    <script>
-      let fade = document.getElementById('fade');
-      let backButton = document.getElementById("backButton");
-
-      backButton.addEventListener("click", () => {
-          fade.style.opacity = 1;
-          setTimeout(() => {window.location.href = 'https://ariestellar.github.io/ARSpaceDay/';}, 1000);
-      });
-
-      document.addEventListener("click", () => {
-        let spaceAudio = document.getElementById("spaceAudio");
-        let poemAudio = document.getElementById("poemAudio");
-        starWarsText.classList.add("animate-text");
-        spaceAudio.volume = 0.2;
-        poemAudio.volume = 0.5;
-        spaceAudio.play();
-        setTimeout(() => { poemAudio.play();}, 3000);
-      }, { once: true });
-
-      window.addEventListener("load", () => {
-        setTimeout(() => { fade.style.opacity = 1;
-            setTimeout(() => { fade.style.opacity = 0; }, 100);
-        }, 1000);
-      });
-  </script>
-	
-	</body>
-</html>
+    }
+}
